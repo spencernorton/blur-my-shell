@@ -219,7 +219,18 @@ export const PanelBlur = class PanelBlur {
             pipeline = new Pipeline(
                 this.effects_manager,
                 global.blur_my_shell._pipelines_manager,
-                this.settings.panel.PIPELINE
+                this.settings.panel.PIPELINE,
+                null,
+                {
+                    effect_overrides: {
+                        native_static_gaussian_blur: () => this.settings.panel.CUSTOMIZE
+                            ? {
+                                unscaled_radius: 2 * this.settings.panel.SIGMA,
+                                brightness: this.settings.panel.BRIGHTNESS,
+                            }
+                            : {},
+                    },
+                }
             );
             background = pipeline.create_background_with_effects(
                 monitor.index, bg_manager_list,
@@ -247,34 +258,25 @@ export const PanelBlur = class PanelBlur {
         // [1]: https://gitlab.gnome.org/GNOME/gnome-shell/-/issues/2857
 
         {
-            if (this.settings.HACKS_LEVEL === 1) {
+            if (!static_blur && this.settings.HACKS_LEVEL === 1) {
                 this._log("panel hack level 1");
 
                 // Proxy object to dynamically resolve the active blur effect.
                 // This ensures repaints continue safely even if pipeline effects are rebuilt.
                 let dynamic_target = {
+                    get_actor: () => background,
                     queue_repaint: () => {
                         let active_pipeline = (bg_manager && bg_manager._bms_pipeline) ? bg_manager._bms_pipeline : pipeline;
-
-                        if (static_blur && active_pipeline && active_pipeline.effects) {
-                            // Repaint all effects in the static pipeline to be agnostic of the active effects
-                            for (let i = 0; i < active_pipeline.effects.length; i++) {
-                                let eff = active_pipeline.effects[i];
-                                if (eff && typeof eff.queue_repaint === 'function') {
-                                    eff.queue_repaint();
-                                }
-                            }
-                        } else if (!static_blur && active_pipeline) {
-                            let eff = active_pipeline.effect; // Dynamic pipeline uses a single effect
-                            if (eff && typeof eff.queue_repaint === 'function') {
-                                eff.queue_repaint();
-                            }
+                        let eff = active_pipeline?.effect; // Dynamic pipeline uses a single effect
+                        if (eff && typeof eff.queue_repaint === 'function') {
+                            eff.queue_repaint();
                         }
                     }
                 };
 
                 paint_signals.disconnect_all();
                 paint_signals.connect(background, dynamic_target);
+                paint_signals.connect(panel, dynamic_target);
             } else {
                 paint_signals.disconnect_all();
             }
@@ -296,6 +298,7 @@ export const PanelBlur = class PanelBlur {
             static_blur,
             monitor,
             bg_manager,
+            paint_signals,
             is_dtp_panel
         };
         this.actors_list.push(actors);
@@ -769,6 +772,7 @@ export const PanelBlur = class PanelBlur {
 
     // IMPORTANT: do never call this in a mutable `this.actors_list.forEach`
     destroy_blur(actors, panel_already_destroyed) {
+        actors.paint_signals?.disconnect_all();
         this.set_should_override_panel(actors, false);
 
         actors.bg_manager._bms_pipeline.destroy();

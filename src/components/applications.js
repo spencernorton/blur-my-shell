@@ -4,6 +4,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as Config from 'resource:///org/gnome/shell/misc/config.js';
 
 import { ApplicationsService } from '../dbus/services.js';
+import { Connections } from '../conveniences/connections.js';
 import { PaintSignals } from '../conveniences/paint_signals.js';
 import { DummyPipeline } from '../conveniences/dummy_pipeline.js';
 import { Pipeline } from '../conveniences/pipeline.js';
@@ -57,6 +58,7 @@ function matchesAnyPattern(value, patterns) {
 export const ApplicationsBlur = class ApplicationsBlur {
     constructor(connections, settings, effects_manager) {
         this.connections = connections;
+        this.damage_connections = new Connections();
         this.settings = settings;
         this.effects_manager = effects_manager;
         this.paint_signals = new PaintSignals(connections);
@@ -169,11 +171,11 @@ export const ApplicationsBlur = class ApplicationsBlur {
         // Recompile patterns in case whitelist/blacklist changed
         this._update_patterns();
 
-        // remove all previously blurred windows, in the case where the
-        // whitelist was changed
-        this.meta_window_map.forEach(((_meta_window, pid) => {
-            this.remove_blur(pid);
-        }));
+        // remove all previously tracked windows, in the case where the
+        // whitelist or blacklist was changed
+        for (const pid of [...this.meta_window_map.keys()]) {
+            this.untrack_meta_window(pid);
+        }
 
         for (
             let i = 0;
@@ -224,10 +226,18 @@ export const ApplicationsBlur = class ApplicationsBlur {
             _ => this.untrack_meta_window(pid)
         );
 
+        const window_actor = meta_window.get_compositor_private();
+        if (window_actor) {
+            this.damage_connections.disconnect_all_for(window_actor);
+            this.damage_connections.connect(
+                window_actor, 'damaged',
+                _ => this.queue_overlapping_blur_repaint(meta_window)
+            );
+        }
+
         this.check_blur(meta_window);
 
-        if (this.settings.applications.STATIC_BLUR && meta_window.get_client_type() === Meta.WindowClientType.X11) {
-            const window_actor = meta_window.get_compositor_private();
+        if (this.settings.applications.STATIC_BLUR && meta_window.get_client_type() === Meta.WindowClientType.X11 && window_actor) {
             window_actor.connect('child-added', _ => {
                 if (!meta_window.blur_actor) {
                     this._warn("can't move blur actor to back, it doesn't exist");
@@ -235,6 +245,63 @@ export const ApplicationsBlur = class ApplicationsBlur {
                 }
 
                 window_actor.set_child_below_sibling(meta_window.blur_actor, null);
+            });
+        }
+    }
+
+    /// When a window commits Wayland/X11 surface damage, expand the pending
+    /// stage redraw clip to cover any overlapping visible blurred window before
+    /// the frame is painted, so GbBlurEffect never self-samples across a
+    /// partial redraw clip.
+    queue_overlapping_blur_repaint(damaged_window) {
+        if (this.settings.applications.STATIC_BLUR)
+            return;
+
+        const damaged_frame = damaged_window.get_frame_rect();
+        const workspace = damaged_window.get_workspace();
+
+        this.meta_window_map.forEach((meta_window, _pid) => {
+            const blur_actor = meta_window.blur_actor;
+            if (!blur_actor || !blur_actor.visible)
+                return;
+            if (
+                workspace
+                && meta_window !== damaged_window
+                && !meta_window.is_on_all_workspaces()
+                && !damaged_window.is_on_all_workspaces()
+                && meta_window.get_workspace() !== workspace
+            )
+                return;
+            if (
+                meta_window === damaged_window
+                || damaged_frame.overlap(meta_window.get_frame_rect())
+            ) {
+                try {
+                    meta_window.bg_manager?._bms_pipeline?.effect?.queue_repaint();
+                } catch (e) { }
+            }
+        });
+
+        const panel_blur = global.blur_my_shell?._panel_blur;
+        if (panel_blur?.enabled) {
+            panel_blur.actors_list?.forEach(actors => {
+                if (actors.static_blur || !actors.widgets?.background?.visible)
+                    return;
+                const panel_box = actors.widgets.panel_box;
+                if (!panel_box)
+                    return;
+                const [px, py] = panel_box.get_transformed_position();
+                const [pw, ph] = panel_box.get_transformed_size();
+                if (
+                    damaged_frame.x < px + pw &&
+                    damaged_frame.x + damaged_frame.width > px &&
+                    damaged_frame.y < py + ph &&
+                    damaged_frame.y + damaged_frame.height > py
+                ) {
+                    try {
+                        actors.bg_manager?._bms_pipeline?.effect?.queue_repaint();
+                    } catch (e) { }
+                }
             });
         }
     }
@@ -351,14 +418,17 @@ export const ApplicationsBlur = class ApplicationsBlur {
                 window_actor, 'bms-application-blurred-widget'
             );
 
-            // if hacks are selected, force to repaint the window
+            // Attach PaintCallbackEffect directly to window_actor so:
+            // 1. Mutter's meta_cullable_cull_out_children sees an enabled
+            //    ClutterEffect on MetaWindowActor and skips opaque-region
+            //    occlusion culling of background windows behind it; and
+            // 2. Partial stage redraws from non-window actors schedule a
+            //    full-window follow-up repaint when HACKS_LEVEL === 1.
+            this.paint_signals.disconnect_all_for_actor(blur_actor);
+            this.paint_signals.disconnect_all_for_actor(window_actor);
             if (this.settings.HACKS_LEVEL === 1) {
                 this._log("hack level 1");
-
-                this.paint_signals.disconnect_all_for_actor(blur_actor);
-                this.paint_signals.connect(blur_actor, pipeline.effect);
-            } else {
-                this.paint_signals.disconnect_all_for_actor(blur_actor);
+                this.paint_signals.connect(window_actor, pipeline.effect);
             }
         }
 
@@ -476,6 +546,8 @@ export const ApplicationsBlur = class ApplicationsBlur {
         else
             blur_actor.hide();
 
+        this.paint_signals.set_enabled_for_actor(window_actor, show_blur);
+
         this.set_window_opacity(window_actor, show_blur
             ? this.settings.applications.OPACITY
             : 255);
@@ -588,6 +660,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
                 delete meta_window.bg_manager;
 
                 // disconnect the signals of the window actor
+                this.paint_signals.disconnect_all_for_actor(window_actor);
                 this.paint_signals.disconnect_all_for_actor(blur_actor);
                 this.connections.disconnect_all_for(window_actor);
             }
@@ -603,6 +676,9 @@ export const ApplicationsBlur = class ApplicationsBlur {
         this.remove_blur(pid);
         let meta_window = this.meta_window_map.get(pid);
         if (meta_window) {
+            let window_actor = meta_window.get_compositor_private();
+            if (window_actor)
+                this.damage_connections.disconnect_all_for(window_actor);
             this.connections.disconnect_all_for(meta_window);
             this.meta_window_map.delete(pid);
         }
@@ -618,6 +694,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
             this.untrack_meta_window(pid);
         });
 
+        this.damage_connections.disconnect_all();
         this.connections.disconnect_all();
         this.paint_signals.disconnect_all();
     }
