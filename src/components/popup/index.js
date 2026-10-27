@@ -2,6 +2,9 @@ import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import Meta from 'gi://Meta';
 import St from 'gi://St';
+import {InjectionManager} from 'resource:///org/gnome/shell/extensions/extension.js';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
+import {GtkMenuMaterial} from './gtk_material.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import {
@@ -10,6 +13,7 @@ import {
     PopupBlurTargets,
 } from './targets.js';
 import { PopupBlurSurface } from './blur_surface.js';
+import { ClientPopupBlurSurface, is_client_popup } from './client_popup.js';
 import { PopupBlurMessageStacks } from './message_stacks.js';
 
 const POPUP_INTERNAL_STYLE_CLASSES = ['bms-popup-blurred-widget', 'bms-popup-backgroundgroup'];
@@ -26,9 +30,12 @@ export const PopupBlur = class PopupBlur {
         this.queued_actors = new Set();
         this.watched_actors = new WeakSet();
         this.destroyed_actors = new WeakSet();
+        this.damage_actors = new WeakSet();
         this.interface_settings = new Gio.Settings({ schema_id: 'org.gnome.desktop.interface' });
         this.message_stacks = new PopupBlurMessageStacks(connections);
         this.targets = new PopupBlurTargets(this);
+        this.menu_injections = new InjectionManager();
+        this.gtk_material = new GtkMenuMaterial();
         this.queue_id = 0;
         this.follow_up_queue_id = 0;
         this.follow_up_actors = new Set();
@@ -44,6 +51,11 @@ export const PopupBlur = class PopupBlur {
 
         this._log("blurring popup surfaces");
         this.enabled = true;
+        // Client submenus appear as one complete surface. Match that behavior
+        // instead of stretching the glass behind a 250 ms accordion animation.
+        for (const method of ['open', 'close'])
+            this.menu_injections.overrideMethod(PopupMenu.PopupSubMenu.prototype, method,
+                original => function () { return original.call(this, false); });
 
         this.update_background();
         this.message_stacks.enable();
@@ -120,6 +132,11 @@ export const PopupBlur = class PopupBlur {
         if (this.is_internal_actor(actor) || !this.watch_actor(actor))
             return;
 
+        this.watch_window_damage(actor);
+        if (is_client_popup(actor)) {
+            this.blur_actor(actor, actor);
+            return;
+        }
         this.message_stacks.scan(actor);
         this.track_container(this.get_actor_overlay(actor));
 
@@ -135,6 +152,23 @@ export const PopupBlur = class PopupBlur {
             this.track_container(actor);
 
         targets.forEach(target => this.blur_actor(target, actor));
+    }
+
+    watch_window_damage(actor) {
+        if (!actor?.meta_window || this.damage_actors.has(actor))
+            return;
+        this.damage_actors.add(actor);
+        this.connections.connect(actor, 'damaged', () => {
+            const rect = actor.meta_window.get_frame_rect();
+            for (const surface of this.surfaces.values()) {
+                if (!surface.is_visible())
+                    continue;
+                const p = surface.get_actor_geometry();
+                if (p && rect.x < p.x + p.width && rect.x + rect.width > p.x
+                    && rect.y < p.y + p.height && rect.y + rect.height > p.y)
+                    surface.invalidate();
+            }
+        });
     }
 
     queue_try_blur(actor) {
@@ -213,8 +247,14 @@ export const PopupBlur = class PopupBlur {
 
         this.destroy_blurred_ancestors(target);
 
-        const { parent, sibling } = this.get_overlay_parent(root_actor, target);
-        const surface = new PopupBlurSurface(
+        const client = is_client_popup(target);
+        const { parent, sibling } = client
+            ? {parent: target, sibling: target.get_first_child()}
+            : this.get_overlay_parent(root_actor, target);
+        // Keep Shell's native BoxPointer hierarchy intact. Its forced offscreen
+        // texture cannot provide the scene backdrop to a nested blur layer.
+        const Surface = client ? ClientPopupBlurSurface : PopupBlurSurface;
+        const surface = new Surface(
             this.connections,
             this.settings,
             this.effects_manager,
@@ -222,7 +262,8 @@ export const PopupBlur = class PopupBlur {
             root_actor,
             parent,
             sibling,
-            this.get_corner_radius(target, root_actor),
+            client ? {key: 'menu-corner-radius', property: 'MENU_CORNER_RADIUS'}
+                : this.get_corner_radius(target, root_actor),
             () => this.enabled && this.surfaces.has(target)
         );
 
@@ -495,6 +536,8 @@ export const PopupBlur = class PopupBlur {
         }
         keyboard_actors.forEach(actor => this.update_keyboard_style(actor, background_style));
         this.surfaces.forEach(surface => surface.update_settings());
+        this.gtk_material.update(this.enabled && this.settings.popup.OVERRIDE_BACKGROUND,
+            this.get_background_style(), this.interface_settings.get_string('gtk-theme'));
     }
 
     clear_keyboard_style(actor, remove_marker = false) {
@@ -567,6 +610,8 @@ export const PopupBlur = class PopupBlur {
 
         this._log("removing blur from popup surfaces");
         this.enabled = false;
+        this.menu_injections.clear();
+        this.gtk_material.update(false);
 
         const keyboard_actors = this._get_keyboard_actors();
         keyboard_actors.forEach(actor => this.clear_keyboard_style(actor, true));
@@ -582,6 +627,7 @@ export const PopupBlur = class PopupBlur {
         this.containers.clear();
         this.watched_actors = new WeakSet();
         this.destroyed_actors = new WeakSet();
+        this.damage_actors = new WeakSet();
         this.message_stacks.disable();
 
         this.connections.disconnect_all();

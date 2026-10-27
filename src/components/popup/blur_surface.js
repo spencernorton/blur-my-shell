@@ -83,6 +83,8 @@ export const PopupBlurSurface = class PopupBlurSurface {
             this.signals.connect_actor(this.parent);
         this.signals.connect_layout();
         this.signals.connect_settings();
+        if (this.style.has_style_class(this.target, 'popup-menu-content'))
+            this.signals.connect_contents(this.target);
         this.queue_update();
 
         return true;
@@ -306,6 +308,23 @@ export const PopupBlurSurface = class PopupBlurSurface {
         return Math.round(opacity * (this.parent?.opacity ?? 255) / 255);
     }
 
+    get_actor_geometry() {
+        return this.placement.geometry.get(this.get_geometry_actor(), {
+            use_content: this.should_use_content_geometry(),
+            use_margins: this.should_use_margin_geometry(),
+        });
+    }
+
+    invalidate() {
+        if (!this.should_repaint())
+            return;
+        // Expand damage before painting, rather than repairing a partially
+        // sampled backdrop on the following frame.
+        this.blur_actor?.queue_redraw();
+        this.queue_repaint();
+        this.queue_update();
+    }
+
     get_geometry_actor() {
         return this.target;
     }
@@ -411,7 +430,7 @@ export const PopupBlurSurface = class PopupBlurSurface {
     queue_repaint(force = false) {
         if (this.static_blur || this.repaint_id || (!force && !this.should_repaint()))
             return;
-        this.repaint_id = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+        this.repaint_id = global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
             this.repaint_id = 0;
             try {
                 if (force || this.should_repaint())
@@ -468,7 +487,7 @@ export const PopupBlurSurface = class PopupBlurSurface {
             global.compositor.get_laters().remove(this.transition_update_id);
         this.transition_update_id = 0;
         if (this.repaint_id)
-            GLib.source_remove(this.repaint_id);
+            global.compositor.get_laters().remove(this.repaint_id);
         this.repaint_id = 0;
         try {
             this.paint_signals.disconnect_all_for_actor(this.blur_actor);

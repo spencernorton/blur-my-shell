@@ -1,4 +1,3 @@
-import Meta from 'gi://Meta';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 const SURFACE_SIGNALS = [
@@ -26,6 +25,7 @@ export const PopupBlurSurfaceSignals = class PopupBlurSurfaceSignals {
         this.surface = surface;
         this.signal_ids = [];
         this.signal_actors = new WeakSet();
+        this.content_actors = new WeakSet();
         this.destroyed_actors = new WeakSet();
     }
 
@@ -36,33 +36,47 @@ export const PopupBlurSurfaceSignals = class PopupBlurSurfaceSignals {
         this.signal_actors.add(actor);
         this.track_destroy(actor);
 
-        const is_heavy_surface = this.surface.is_heavy_surface();
-
         SURFACE_SIGNALS.forEach(signal => {
             try {
-            let id = actor.connect(signal, () => {
-                this.clear_pending_idles();
-                const is_visibility_change = signal === 'notify::visible' || signal === 'notify::mapped';
-                if (is_heavy_surface || is_visibility_change) {
+                const id = actor.connect(signal, () => {
                     this.surface.queue_update();
-                    return;
-                }
-                else {
-                    this.updateId = global.compositor.get_laters().add(Meta.LaterType.IDLE, () => {
-                        this.updateId = 0;
-                        this.surface.queue_update();
-                        return false;
-                    });
-                }
-            });
-            this.signal_ids.push([actor, id, signal]);
+                });
+                this.signal_ids.push([actor, id, signal]);
             } catch (e) { }
         });
     }
 
+    connect_contents(actor) {
+        if (!actor || this.content_actors.has(actor))
+            return;
+        this.content_actors.add(actor);
+        if (!this.signal_actors.has(actor))
+            this.track_destroy(actor);
+        const invalidate = () => this.surface.invalidate();
+        for (const signal of ['notify::pseudo-class', 'notify::style-class', 'notify::hover',
+            'style-changed', 'notify::visible', 'notify::allocation']) {
+            try {
+                this.signal_ids.push([actor, actor.connect(signal, invalidate)]);
+            } catch (e) { }
+        }
+        if ('text' in actor) {
+            this.signal_ids.push([actor, actor.connect('notify::text', invalidate)]);
+        }
+        this.signal_ids.push([actor, actor.connect('child-added', (_, child) => {
+            this.connect_contents(child);
+            invalidate();
+        })]);
+        this.signal_ids.push([actor, actor.connect('child-removed', invalidate)]);
+        for (const child of actor.get_children())
+            this.connect_contents(child);
+    }
+
     track_destroy(actor) {
         try {
-            const id = actor.connect('destroy', () => this.destroyed_actors.add(actor));
+            const id = actor.connect('destroy', () => {
+                this.destroyed_actors.add(actor);
+                this.signal_ids = this.signal_ids.filter(([owner]) => owner !== actor);
+            });
             this.signal_ids.push([actor, id]);
         } catch (e) { }
     }
@@ -110,15 +124,7 @@ export const PopupBlurSurfaceSignals = class PopupBlurSurfaceSignals {
         });
     }
 
-    clear_pending_idles() {
-        if (this.updateId) {
-            global.compositor.get_laters().remove(this.updateId);
-            this.updateId = 0;
-        }
-    }
-
     disconnect_all() {
-        this.clear_pending_idles();
         this.signal_ids.forEach(([signal_actor, signal_id]) => {
             if (this.destroyed_actors.has(signal_actor))
                 return;
@@ -129,6 +135,7 @@ export const PopupBlurSurfaceSignals = class PopupBlurSurfaceSignals {
         });
         this.signal_ids = [];
         this.signal_actors = new WeakSet();
+        this.content_actors = new WeakSet();
         this.destroyed_actors = new WeakSet();
     }
 };
