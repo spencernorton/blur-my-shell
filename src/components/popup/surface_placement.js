@@ -48,11 +48,7 @@ export const PopupBlurSurfacePlacement = class PopupBlurSurfacePlacement {
 
     get_unclipped_surface_geometry() {
         try {
-            const geometry_actor = this.surface.get_geometry_actor();
-            const geometry = this.geometry.get(geometry_actor, {
-                use_content: this.surface.should_use_content_geometry(),
-                use_margins: this.surface.should_use_margin_geometry(),
-            });
+            const geometry = this.surface.get_actor_geometry();
             if (!this.has_valid_geometry(geometry))
                 return null;
 

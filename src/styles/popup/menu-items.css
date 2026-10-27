@@ -118,3 +118,53 @@
 .bms-popup-background-dark .popup-menu-item:checked {
     background-color: rgba(255, 255, 255, 0.14) !important;
 }
+
+/* Shared compact menu geometry, also used by GTK3 and GTK4 client menus. */
+.bms-popup-background-dark .popup-menu-content,
+.bms-popup-background-light .popup-menu-content,
+.bms-popup-background-transparent .popup-menu-content {
+    padding: 6px;
+}
+.bms-popup-background-dark .popup-menu-item,
+.bms-popup-background-light .popup-menu-item,
+.bms-popup-background-transparent .popup-menu-item {
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 14px;
+    min-height: 0;
+}
+
+/* White labels need a contrast floor even over a bright application window.
+ * This is Shell-only; the accepted GTK3 desktop glass remains unchanged. */
+.bms-popup-background-dark .popup-menu-content,
+.bms-popup-surface-dark .popup-menu-content,
+.bms-popup-background-dark .quick-settings,
+.bms-popup-surface-dark .quick-settings,
+.bms-popup-background-dark .quick-toggle-menu,
+.bms-popup-surface-dark .quick-toggle-menu,
+.bms-popup-background-dark .candidate-popup-content,
+.bms-popup-surface-dark .candidate-popup-content {
+    background: rgba(45, 45, 50, 0.68) !important;
+    color: #ffffff;
+}
+
+.bms-popup-background-dark .popup-menu-item,
+.bms-popup-surface-dark .popup-menu-item {
+    color: #ffffff;
+}
+
+.bms-popup-background-dark .popup-menu-item:insensitive,
+.bms-popup-surface-dark .popup-menu-item:insensitive {
+    color: rgba(255, 255, 255, 0.45);
+}
+
+/* Theme row fades generate partial scene damage after the initial hover event.
+ * Glass menu rows change state immediately, matching the native GTK menus. */
+.bms-popup-background-dark .popup-menu-item,
+.bms-popup-surface-dark .popup-menu-item,
+.bms-popup-background-light .popup-menu-item,
+.bms-popup-surface-light .popup-menu-item,
+.bms-popup-background-transparent .popup-menu-item,
+.bms-popup-surface-transparent .popup-menu-item {
+    transition-duration: 0ms;
+}
