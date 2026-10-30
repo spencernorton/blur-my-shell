@@ -1,6 +1,19 @@
-# GNOME Shell Extension - Blur my Shell
+<h1 align="center">Blur my Shell</h1>
 
-[<img src="https://github.com/aunetx/files_utils/raw/master/get_it_on_gnome_extensions.png" height="100" align="right">](https://extensions.gnome.org/extension/3193/blur-my-shell/)
+<p align="center"><strong>Background blur across the GNOME desktop.</strong><br>
+The maintained fork used by NorviOS, with overview, panel and popup integration.</p>
+
+<p align="center"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/demos/blur-overview-still.png"><img src="docs/demos/blur-overview.gif" alt="Open the GNOME overview and Quick Settings with Blur my Shell enabled." width="900"></picture></p>
+
+The actual fork built from source and enabled in an isolated GNOME session with a generated wallpaper. [Recording source and still image](docs/demos/README.md).
+
+This repository preserves [aunetx/blur-my-shell](https://github.com/aunetx/blur-my-shell)
+and its contributors’ work. For changes specific to this fork, use
+[this repository’s issues](https://github.com/spencernorton/blur-my-shell/issues).
+
+## Upstream documentation
+
+[<img alt="Install upstream Blur my Shell on GNOME Extensions" src="https://github.com/aunetx/files_utils/raw/master/get_it_on_gnome_extensions.png" height="100" align="right">](https://extensions.gnome.org/extension/3193/blur-my-shell/)
 
 [![License](https://img.shields.io/github/license/aunetx/blur-my-shell)](https://github.com/aunetx/blur-my-shell/blob/master/LICENSE)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/aunetx/blur-my-shell)](https://github.com/aunetx/blur-my-shell/releases/latest)
@@ -13,7 +26,7 @@ A GNOME Shell extension that adds a blur look to different parts of the GNOME Sh
 The old rounded-blur library is no longer required. If you installed it previously,
 see the [removal instructions](docs/rounded-blur-removal.md).
 
-[<img src="https://hosted.weblate.org/widgets/blur-my-shell/-/blur-my-shell/multi-auto.svg" align="right">](https://hosted.weblate.org/engage/blur-my-shell/)
+[<img alt="Upstream translation coverage" src="https://hosted.weblate.org/widgets/blur-my-shell/-/blur-my-shell/multi-auto.svg" align="right">](https://hosted.weblate.org/engage/blur-my-shell/)
 
 ## Functionalities
 
@@ -196,7 +209,7 @@ Older GNOME Shell versions are supported up to Blur my Shell version 6, and by v
 
 ## Special thanks
 
-<img src="https://github.com/aunetx/files_utils/raw/master/blur-my-shell@4x.png" height="128" align="right">
+<img alt="Blur my Shell icon" src="https://github.com/aunetx/files_utils/raw/master/blur-my-shell@4x.png" height="128" align="right">
 
 Much much love to (I hope I did not forget anyone...):
 
