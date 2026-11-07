@@ -3,6 +3,12 @@
 <p align="center"><strong>Background blur across the GNOME desktop.</strong><br>
 The maintained fork used by NorviOS, with overview, panel and popup integration.</p>
 
+<p align="center">
+  <a href="https://norvitech.com/norvi-os/"><img alt="NorviOS component" src="https://img.shields.io/badge/NorviOS-component-FD8024.svg"></a>
+  <a href="https://github.com/spencernorton/blur-my-shell/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/spencernorton/blur-my-shell/actions/workflows/ci.yml/badge.svg?branch=master"></a>
+  <a href="https://github.com/spencernorton/blur-my-shell/releases/latest">NorviOS release</a>
+</p>
+
 <p align="center"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/demos/blur-overview-still.png"><img src="docs/demos/blur-overview.gif" alt="Open the GNOME overview and Quick Settings with Blur my Shell enabled." width="900"></picture></p>
 
 The actual fork built from source and enabled in an isolated GNOME session with a generated wallpaper. [Recording source and still image](docs/demos/README.md).
@@ -209,7 +215,6 @@ Older GNOME Shell versions are supported up to Blur my Shell version 6, and by v
 
 ## Special thanks
 
-<img alt="Blur my Shell icon" src="https://github.com/aunetx/files_utils/raw/master/blur-my-shell@4x.png" height="128" align="right">
 
 Much much love to (I hope I did not forget anyone...):
 
