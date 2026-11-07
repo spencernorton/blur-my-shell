@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master, norvi-73]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build extension
+    runs-on: ubuntu-24.04
+    container: ubuntu:26.04@sha256:da6fc2be547864451aa253836dd926da33623312df4a9a243e35dc877c378a78
+    timeout-minutes: 12
+    steps:
+      - name: Install build dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update -qq
+          apt-get install -y --no-install-recommends ca-certificates git make \
+            gettext gnome-shell libglib2.0-bin nodejs unzip
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Check JavaScript and schemas
+        run: |
+          find src -name '*.js' -print0 | xargs -0 -n1 sh -c 'node --input-type=module --check < "$1"' sh
+          glib-compile-schemas --strict --dry-run schemas
+      - name: Build and verify the extension archive
+        run: |
+          make build
+          unzip -t build/*.shell-extension.zip
