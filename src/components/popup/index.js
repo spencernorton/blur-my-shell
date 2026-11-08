@@ -14,7 +14,7 @@ import {
 } from './targets.js';
 import { PopupBlurSurface } from './blur_surface.js';
 import { ClientPopupBlurSurface, is_client_popup } from './client_popup.js';
-import { PopupBlurMessageStacks } from './message_stacks.js';
+import { PopupBlurMessageStacks, is_surface_actor } from './message_stacks.js';
 
 const POPUP_INTERNAL_STYLE_CLASSES = ['bms-popup-blurred-widget', 'bms-popup-backgroundgroup'];
 const POPUP_INTERNAL_NAMES = ['bms-popup-blurred-widget', 'bms-popup-backgroundgroup'];
@@ -406,6 +406,11 @@ export const PopupBlur = class PopupBlur {
     is_internal_actor(actor) {
         if (!actor)
             return false;
+
+        // Mutter drops a closed window's surface actor without destroying it,
+        // so a 'destroy' watch on it would pin its last frame in VRAM.
+        if (is_surface_actor(actor))
+            return true;
 
         if (this.has_any_style_class(actor, POPUP_INTERNAL_STYLE_CLASSES))
             return true;

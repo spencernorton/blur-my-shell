@@ -1,9 +1,17 @@
 import GLib from 'gi://GLib';
+import GObject from 'gi://GObject';
 
 const STACKED_PSEUDO_CLASSES = ['second-in-stack', 'lower-in-stack'];
 const MESSAGE_CONTAINER_STYLE_CLASSES = ['message-list', 'message-view', 'message-notification-group'];
 const INTERNAL_STYLE_CLASSES = ['bms-popup-blurred-widget', 'bms-popup-backgroundgroup'];
 const INTERNAL_NAMES = ['bms-popup-blurred-widget', 'bms-popup-backgroundgroup'];
+
+// MetaSurfaceActor is not in the Meta typelib, so match its GType.
+export function is_surface_actor(actor) {
+    const type = GObject.type_from_name('MetaSurfaceActor');
+    const gtype = actor?.constructor?.$gtype;
+    return Boolean(type && gtype && GObject.type_is_a(gtype, type));
+}
 
 export const PopupBlurMessageStacks = class PopupBlurMessageStacks {
     constructor(connections) {
@@ -503,6 +511,11 @@ export const PopupBlurMessageStacks = class PopupBlurMessageStacks {
     is_internal_actor(actor) {
         if (!actor)
             return false;
+
+        // Mutter drops a closed window's surface actor without destroying it,
+        // so a 'destroy' watch on it would pin its last frame in VRAM.
+        if (is_surface_actor(actor))
+            return true;
 
         if (this.has_any_style_class(actor, INTERNAL_STYLE_CLASSES))
             return true;
